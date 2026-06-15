@@ -134,12 +134,93 @@
     font-family: inherit;
   }
   .ctrl-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
-  .ctrl-btn.slow.active {
+  .ctrl-btn.slow.active,
+  .ctrl-btn.heart.active {
     background: linear-gradient(180deg, #5a4a1a, #3d3210);
     border-color: var(--warn);
     color: var(--warn);
   }
+  .ctrl-btn.heart.active {
+    background: linear-gradient(180deg, #5a1a2a, #3d1018);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
   .ctrl-btn.reset { color: var(--danger); border-color: rgba(255,85,119,0.4); }
+  .ctrl-btn.info { color: var(--accent); border-color: rgba(79,195,255,0.4); }
+  /* Knowledge modal */
+  #knowledge-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 20, 0.85);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #knowledge-modal.show { display: flex; }
+  #knowledge-box {
+    max-width: 640px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #131e36, #0c1424);
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 8px 40px rgba(79,195,255,0.2);
+  }
+  #knowledge-box h2 {
+    color: var(--accent);
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  #knowledge-box .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  #knowledge-box h3 {
+    color: var(--warn);
+    font-size: 15px;
+    margin-top: 18px;
+    margin-bottom: 6px;
+  }
+  #knowledge-box p, #knowledge-box li {
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  #knowledge-box ul { padding-left: 22px; margin: 6px 0; }
+  #knowledge-box .formula {
+    display: inline-block;
+    background: rgba(79,195,255,0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--accent);
+    margin: 0 2px;
+  }
+  #knowledge-box .warn-box {
+    background: rgba(255,85,119,0.1);
+    border-left: 3px solid var(--danger);
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 4px;
+    color: #ffccd5;
+    font-size: 13px;
+  }
+  #knowledge-close {
+    float: right;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  #knowledge-close:hover { border-color: var(--danger); color: var(--danger); }
   #hint {
     position: absolute;
     bottom: 100px;
@@ -214,8 +295,56 @@
   <div id="hint"></div>
 
   <div class="panel" id="controls">
+    <button class="ctrl-btn heart" id="btn-heart">❤️ 通過心臟</button>
     <button class="ctrl-btn slow" id="btn-slow">🐢 慢動作</button>
+    <button class="ctrl-btn info" id="btn-info">❓ 為什麼不會電死人</button>
     <button class="ctrl-btn reset" id="btn-reset">↻ 重置</button>
+  </div>
+
+  <div id="knowledge-modal">
+    <div id="knowledge-box">
+      <button id="knowledge-close" aria-label="關閉">×</button>
+      <h2>⚡ 為什麼萊頓瓶不會電死人？</h2>
+      <div class="subtitle">關鍵在於「能量」與「時間」，不是「電壓」</div>
+
+      <h3>1. 高電壓 ≠ 高能量</h3>
+      <p>萊頓瓶能輕鬆累積 <span class="formula">5,000～30,000 V</span> 的電壓，但儲存的能量極少。電容器儲能公式：</p>
+      <p style="text-align:center; margin: 10px 0;"><span class="formula">E = ½ × C × V²</span></p>
+      <p>典型課堂用萊頓瓶電容約 <span class="formula">C ≈ 1 nF</span>（10⁻⁹ 法拉），充電到 20,000 V 時：</p>
+      <p style="text-align:center;"><span class="formula">E = ½ × 10⁻⁹ × 20000² = 0.2 焦耳</span></p>
+      <p>這只夠讓 1 公克的水升溫 0.05 °C — 連一個 LED 都點不亮幾秒。</p>
+
+      <h3>2. 放電時間極短</h3>
+      <p>整個放電在 <span class="formula">1～100 微秒 (µs)</span> 內完成。人體心臟引起致命心律不整需要電流「持續」流過至少 <span class="formula">幾十毫秒</span>，瞬間脈衝即使流經心臟也太短，來不及干擾心律。</p>
+
+      <h3>3. 電流走「最短電阻路徑」</h3>
+      <p>當你左手握外層、右手碰瓶頂，電流路徑會選擇 <strong>手 → 手臂 → 對側手</strong> 這條最短路徑。雖然軀幹電阻也低，但路徑較長且分散，實際流過心臟的電流僅佔總電流的 <span class="formula">&lt; 5%</span>。</p>
+      <p>👉 你可以點下方「❤️ 通過心臟」切換兩種視覺化：預設「不通過心臟」是真實情境；切到「通過心臟」是放大誇示效果用於教學對比。</p>
+
+      <h3>4. 致命的閾值在哪？</h3>
+      <ul>
+        <li><strong>1 mA</strong>：剛能感覺到刺痛</li>
+        <li><strong>10 mA</strong>：肌肉痙攣，可能「黏住」電源</li>
+        <li><strong>50 mA 持續 1 秒</strong>：心律不整風險</li>
+        <li><strong>100 mA 持續數秒</strong>：心室顫動 → 致命</li>
+      </ul>
+      <p>萊頓瓶放電的「平均電流」（總電荷 ÷ 時間）瞬間可達 <span class="formula">數安培</span>，但因時間極短（µs 級），人體感受到的只是強烈刺痛與肌肉抽搐，不會引發致命的心室顫動。</p>
+
+      <div class="warn-box">
+        ⚠️ <strong>實驗安全提醒：</strong>雖然單顆教學萊頓瓶不致命，但 (1) 多顆並聯增加電容 (2) 心臟病患者或心律調節器使用者 (3) 不慎以充電器持續供電 — 任一情況都可能轉為高風險。教學示範時務必使用低電容裝置並縮短充電時間。
+      </div>
+
+      <h3>5. 對比：什麼會電死人？</h3>
+      <ul>
+        <li><strong>家用 110V / 220V 交流電</strong>：電壓不高但能 <strong>持續供電</strong>，肌肉鎖住手後電流持續流過心臟 → 致命</li>
+        <li><strong>高壓電線</strong>：上萬伏 + 持續電流，瞬間燒傷 + 心臟驟停</li>
+        <li><strong>除顫器 (AED)</strong>：刻意設計 200~360 焦耳的高能脈衝，是萊頓瓶的 1000 倍以上</li>
+      </ul>
+
+      <p style="margin-top: 20px; color: var(--muted); font-size: 12px; text-align: center;">
+        記住口訣：<strong style="color: var(--warn)">電壓嚇人，電流殺人，時間決定命運</strong>
+      </p>
+    </div>
   </div>
 </div>
 
@@ -329,6 +458,7 @@
     flashIntensity: 0,
     slowMo: false,
     mode: 'sandbox',
+    throughHeart: false, // 預設不通過心臟（符合真實物理）
   };
 
   // Body skeleton path nodes (electrons can pool around these)
@@ -609,7 +739,21 @@
     state.flashIntensity = 1;
     const j = scene.jar;
     const b = scene.body;
-    const path = [
+    // Path A: 不通過心臟（真實情況，最短電阻路徑 — 手臂上緣直接走肩線）
+    // Path B: 通過心臟（教學誇示版本，路徑經過心臟）
+    const pathSkipHeart = [
+      { x: j.knob.x, y: j.knob.y },
+      { x: scene.rightHand.x, y: scene.rightHand.y },
+      { x: b.elbowR.x, y: b.elbowR.y },
+      { x: b.shoulderR.x, y: b.shoulderR.y },
+      // 直接從右肩走到左肩（鎖骨上方，跳過心臟）
+      { x: (b.shoulderL.x + b.shoulderR.x) / 2, y: b.shoulderL.y - 10 * b.scale },
+      { x: b.shoulderL.x, y: b.shoulderL.y },
+      { x: b.elbowL.x, y: b.elbowL.y },
+      { x: b.handL.x, y: b.handL.y },
+      { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
+    ];
+    const pathThroughHeart = [
       { x: j.knob.x, y: j.knob.y },
       { x: scene.rightHand.x, y: scene.rightHand.y },
       { x: b.elbowR.x, y: b.elbowR.y },
@@ -620,6 +764,7 @@
       { x: b.handL.x, y: b.handL.y },
       { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
     ];
+    const path = state.throughHeart ? pathThroughHeart : pathSkipHeart;
     const sourceCount = particles.inner.length;
     const visibleCount = Math.min(40, sourceCount);
     for (let i = 0; i < visibleCount; i++) {
@@ -1141,6 +1286,31 @@
       btn.classList.add('active');
       state.mode = btn.dataset.mode;
     });
+  });
+
+  // Heart path toggle
+  const heartBtn = document.getElementById('btn-heart');
+  heartBtn.addEventListener('click', () => {
+    state.throughHeart = !state.throughHeart;
+    heartBtn.classList.toggle('active', state.throughHeart);
+    heartBtn.textContent = state.throughHeart ? '❤️ 通過心臟 (誇示版)' : '🫀 不通過心臟 (真實)';
+  });
+  // Set initial label
+  heartBtn.textContent = '🫀 不通過心臟 (真實)';
+
+  // Knowledge modal
+  const modal = document.getElementById('knowledge-modal');
+  document.getElementById('btn-info').addEventListener('click', () => {
+    modal.classList.add('show');
+  });
+  document.getElementById('knowledge-close').addEventListener('click', () => {
+    modal.classList.remove('show');
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.remove('show');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') modal.classList.remove('show');
   });
 
   // ============ Utils ============
