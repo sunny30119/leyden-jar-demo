@@ -739,18 +739,21 @@
     state.flashIntensity = 1;
     const j = scene.jar;
     const b = scene.body;
-    // 簡化路徑：觸碰手 → 軀幹 → 持瓶手 → 放電結束
-    // 不通過心臟：經過上胸/鎖骨（最短電阻路徑）
-    // 通過心臟：經過心臟位置（教學誇示版）
-    const torsoNode = state.throughHeart
+    // 路徑：瓶頂 → 觸碰手 → 進入身體 → 沿身體內部 → 持瓶手 → 外層導體
+    // 在人體內走最短電阻路徑：手→肩→軀幹→肩→手
+    // 不通過心臟：走鎖骨上方
+    // 通過心臟：經過心臟位置
+    const torsoMid = state.throughHeart
       ? { x: b.heart.x, y: b.heart.y }
-      : { x: (b.shoulderL.x + b.shoulderR.x) / 2, y: b.shoulderL.y };
+      : { x: (b.shoulderL.x + b.shoulderR.x) / 2, y: b.shoulderL.y + 5 * b.scale };
     const path = [
-      { x: j.knob.x, y: j.knob.y },
-      { x: scene.rightHand.x, y: scene.rightHand.y },
-      torsoNode,
-      { x: b.handL.x, y: b.handL.y },
-      { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
+      { x: j.knob.x, y: j.knob.y },                              // 0: 瓶頂金屬球（空氣電弧起點）
+      { x: scene.rightHand.x, y: scene.rightHand.y },            // 1: 右手（進入人體）
+      { x: b.shoulderR.x, y: b.shoulderR.y },                    // 2: 右肩（體內）
+      torsoMid,                                                   // 3: 軀幹中央（心臟 or 鎖骨）
+      { x: b.shoulderL.x, y: b.shoulderL.y },                    // 4: 左肩（體內）
+      { x: b.handL.x, y: b.handL.y },                            // 5: 左手（離開人體）
+      { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 }, // 6: 外層導體
     ];
     const sourceCount = particles.inner.length;
     const visibleCount = Math.min(40, sourceCount);
