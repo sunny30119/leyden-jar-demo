@@ -517,7 +517,7 @@
     // === Arc particles travel ===
     for (let i = particles.arc.length - 1; i >= 0; i--) {
       const p = particles.arc[i];
-      p.progress += 0.04 * dt;
+      p.progress += 0.08 * dt;
       if (p.progress >= 1) {
         particles.arc.splice(i, 1);
         continue;
@@ -547,9 +547,13 @@
       scene.rightHand.y += (hy - scene.rightHand.y) * 0.08 * dt;
     }
 
-    // End discharge state
-    if (state.discharging && particles.arc.length === 0) {
-      state.discharging = false;
+    // End discharge state (with 2.5s safety timeout)
+    if (state.discharging) {
+      const elapsed = performance.now() - (state.dischargeStartT || 0);
+      if (particles.arc.length === 0 || elapsed > 2500) {
+        state.discharging = false;
+        particles.arc.length = 0;
+      }
     }
 
     updateUI();
@@ -572,6 +576,7 @@
   function triggerDischarge() {
     if (particles.inner.length === 0) return;
     state.discharging = true;
+    state.dischargeStartT = performance.now();
     state.flashIntensity = 1;
     const j = scene.jar;
     const b = scene.body;
@@ -586,15 +591,16 @@
       { x: b.handL.x, y: b.handL.y },
       { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
     ];
-    const count = particles.inner.length;
-    for (let i = 0; i < count; i++) {
+    const sourceCount = particles.inner.length;
+    const visibleCount = Math.min(40, sourceCount);
+    for (let i = 0; i < visibleCount; i++) {
       particles.arc.push({
-        progress: -i * 0.02,
+        progress: -i * 0.05,
         path,
         x: j.knob.x, y: j.knob.y,
       });
     }
-    particles.discharged += count;
+    particles.discharged += sourceCount;
     particles.inner = [];
     // Reset outer electrons to flow back
     for (const p of particles.body) {
@@ -910,19 +916,27 @@
   function drawArc() {
     if (particles.arc.length === 0) return;
     ctx.save();
-    // Main lightning path
     const path = particles.arc[0].path;
     if (path) {
-      ctx.strokeStyle = '#aaddff';
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#88ccff';
-      ctx.lineWidth = 3;
+      // Outer glow (single pass, no shadowBlur)
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
       for (let i = 1; i < path.length; i++) {
         const px = path[i].x + (Math.random() - 0.5) * 6;
         const py = path[i].y + (Math.random() - 0.5) * 6;
         ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      // Mid layer
+      ctx.strokeStyle = '#aaddff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
       }
       ctx.stroke();
       // Bright core
@@ -935,7 +949,6 @@
       }
       ctx.stroke();
     }
-    ctx.shadowBlur = 0;
     // Traveling electrons
     ctx.fillStyle = '#ffffff';
     for (const p of particles.arc) {
@@ -1073,10 +1086,13 @@
     scene.rod.dragging = false;
     scene.rod.charging = false;
     scene.rightHand.dragging = false;
+    try { if (e && e.pointerId !== undefined) cv.releasePointerCapture(e.pointerId); } catch(_) {}
   }
   cv.addEventListener('pointerup', endDrag);
   cv.addEventListener('pointercancel', endDrag);
-  cv.addEventListener('pointerleave', endDrag);
+  // Global safety net: if pointer is released anywhere on the page, clear drag state
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('blur', () => endDrag());
 
   // ============ Controls ============
   document.getElementById('btn-reset').addEventListener('click', () => {
