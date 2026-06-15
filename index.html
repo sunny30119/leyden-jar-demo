@@ -739,32 +739,19 @@
     state.flashIntensity = 1;
     const j = scene.jar;
     const b = scene.body;
-    // Path A: 不通過心臟（真實情況，最短電阻路徑 — 手臂上緣直接走肩線）
-    // Path B: 通過心臟（教學誇示版本，路徑經過心臟）
-    const pathSkipHeart = [
+    // 簡化路徑：觸碰手 → 軀幹 → 持瓶手 → 放電結束
+    // 不通過心臟：經過上胸/鎖骨（最短電阻路徑）
+    // 通過心臟：經過心臟位置（教學誇示版）
+    const torsoNode = state.throughHeart
+      ? { x: b.heart.x, y: b.heart.y }
+      : { x: (b.shoulderL.x + b.shoulderR.x) / 2, y: b.shoulderL.y };
+    const path = [
       { x: j.knob.x, y: j.knob.y },
       { x: scene.rightHand.x, y: scene.rightHand.y },
-      { x: b.elbowR.x, y: b.elbowR.y },
-      { x: b.shoulderR.x, y: b.shoulderR.y },
-      // 直接從右肩走到左肩（鎖骨上方，跳過心臟）
-      { x: (b.shoulderL.x + b.shoulderR.x) / 2, y: b.shoulderL.y - 10 * b.scale },
-      { x: b.shoulderL.x, y: b.shoulderL.y },
-      { x: b.elbowL.x, y: b.elbowL.y },
+      torsoNode,
       { x: b.handL.x, y: b.handL.y },
       { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
     ];
-    const pathThroughHeart = [
-      { x: j.knob.x, y: j.knob.y },
-      { x: scene.rightHand.x, y: scene.rightHand.y },
-      { x: b.elbowR.x, y: b.elbowR.y },
-      { x: b.shoulderR.x, y: b.shoulderR.y },
-      { x: b.heart.x, y: b.heart.y },
-      { x: b.shoulderL.x, y: b.shoulderL.y },
-      { x: b.elbowL.x, y: b.elbowL.y },
-      { x: b.handL.x, y: b.handL.y },
-      { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
-    ];
-    const path = state.throughHeart ? pathThroughHeart : pathSkipHeart;
     const sourceCount = particles.inner.length;
     const visibleCount = Math.min(40, sourceCount);
     for (let i = 0; i < visibleCount; i++) {
