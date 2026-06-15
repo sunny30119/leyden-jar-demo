@@ -306,11 +306,13 @@
 
   // ============ Physics Simulation ============
   const config = {
-    maxInner: 300,         // max electrons in inner conductor
-    bodyElectronCount: 80, // free electrons in body
-    chargeRate: 2.5,       // electrons injected per frame when charging
-    dischargeThreshold: 35, // distance for right-hand discharge trigger
-    rodInjectDistance: 40, // distance for rod to inject
+    maxInner: 140,          // max electrons in inner conductor (reduced for stability)
+    bodyElectronCount: 50,  // free electrons in body
+    outerElectronCount: 25, // electrons clustered near outer conductor initially
+    chargeRate: 1.5,        // electrons injected per frame when charging
+    dischargeThreshold: 40, // distance for right-hand discharge trigger
+    dischargeCooldown: 800, // ms; ignore re-trigger after discharge
+    maxVelocity: 8,         // velocity clamp to prevent NaN/runaway
   };
 
   let particles = {
@@ -363,7 +365,7 @@
     }
     // Add electrons clustered near outer conductor of jar (held by left hand)
     const j = scene.jar;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < config.outerElectronCount; i++) {
       const t = Math.random();
       particles.body.push({
         x: j.cx + (Math.random() - 0.5) * j.width * 0.9,
@@ -406,122 +408,135 @@
     requestAnimationFrame(tick);
   }
 
+  // Sanitize a number to prevent NaN/Infinity propagation
+  function safe(n, fallback) {
+    return (Number.isFinite(n)) ? n : (fallback || 0);
+  }
+  function clampVel(p) {
+    const m = config.maxVelocity;
+    if (!Number.isFinite(p.vx)) p.vx = 0;
+    if (!Number.isFinite(p.vy)) p.vy = 0;
+    if (p.vx > m) p.vx = m; else if (p.vx < -m) p.vx = -m;
+    if (p.vy > m) p.vy = m; else if (p.vy < -m) p.vy = -m;
+  }
+
   function update(dt) {
+    const j = scene.jar;
+    const now = performance.now();
+
     // === Rod charging ===
     if (scene.rod.charging) {
-      const d = dist(scene.rod.x, scene.rod.y, scene.jar.knob.x, scene.jar.knob.y);
+      const d = dist(scene.rod.x, scene.rod.y, j.knob.x, j.knob.y);
       if (d < 80 && particles.inner.length < config.maxInner) {
-        for (let i = 0; i < config.chargeRate; i++) {
+        const add = Math.ceil(config.chargeRate * dt);
+        for (let i = 0; i < add; i++) {
           if (particles.inner.length < config.maxInner) addInnerElectron();
         }
       }
     }
 
-    // === Inner electrons settle in inner conductor ===
-    const j = scene.jar;
+    // === Inner electrons: brownian motion confined to ellipse (no O(n²) repulsion) ===
+    const ellA = j.width * 0.35;
+    const ellB = j.height * 0.35;
     for (const p of particles.inner) {
-      // Confine to inner region (avoid going past glass)
-      const dx = p.x - j.innerCenter.x;
-      const dy = p.y - j.innerCenter.y;
-      // Mutual repulsion (light)
-      for (const q of particles.inner) {
-        if (q === p) continue;
-        const ddx = p.x - q.x, ddy = p.y - q.y;
-        const dd = ddx*ddx + ddy*ddy;
-        if (dd < 100 && dd > 0.1) {
-          const f = 0.3 / dd;
-          p.vx += ddx * f;
-          p.vy += ddy * f;
-        }
-      }
-      p.vx *= 0.85;
-      p.vy *= 0.85;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      // Constrain inside inner conductor (ellipse)
-      const a = j.width * 0.35, b = j.height * 0.35;
-      const nx = (p.x - j.innerCenter.x) / a;
-      const ny = (p.y - j.innerCenter.y) / b;
+      // Slight brownian jitter
+      p.vx += (Math.random() - 0.5) * 0.3;
+      p.vy += (Math.random() - 0.5) * 0.3;
+      // Spread force: push away from center proportional to fill level (more crowded = more spread)
+      const dxc = p.x - j.innerCenter.x;
+      const dyc = p.y - j.innerCenter.y;
+      const dcent = Math.sqrt(dxc*dxc + dyc*dyc) + 0.5;
+      const fillPressure = particles.inner.length / config.maxInner;
+      const push = fillPressure * 0.15;
+      p.vx += (dxc / dcent) * push;
+      p.vy += (dyc / dcent) * push;
+      p.vx *= 0.82;
+      p.vy *= 0.82;
+      clampVel(p);
+      p.x = safe(p.x + p.vx * dt, j.innerCenter.x);
+      p.y = safe(p.y + p.vy * dt, j.innerCenter.y);
+      // Ellipse constraint
+      const nx = (p.x - j.innerCenter.x) / ellA;
+      const ny = (p.y - j.innerCenter.y) / ellB;
       const r2 = nx*nx + ny*ny;
-      if (r2 > 1) {
+      if (r2 > 1 && Number.isFinite(r2)) {
         const r = Math.sqrt(r2);
-        p.x = j.innerCenter.x + (nx / r) * a;
-        p.y = j.innerCenter.y + (ny / r) * b;
+        p.x = j.innerCenter.x + (nx / r) * ellA;
+        p.y = j.innerCenter.y + (ny / r) * ellB;
+        p.vx *= 0.5;
+        p.vy *= 0.5;
       }
     }
 
-    // === Induction: inner charge pushes body electrons toward extremities ===
+    // === Induction: simplified, no per-electron scoring loop ===
     const innerCharge = particles.inner.length;
     const inductionStrength = innerCharge / config.maxInner; // 0..1
-    state.bodyDisplacement = 0;
-    const bodyNodes = getBodyNodes();
-    const repelFrom = j.innerCenter;
+    let displacementCount = 0;
+    const farNodes = [
+      scene.body.head, scene.body.footL, scene.body.footR,
+      scene.body.elbowR, scene.body.hipL, scene.body.hipR,
+      scene.body.shoulderL,
+    ];
 
     for (const p of particles.body) {
-      // Repulsion away from inner electrons cluster
-      const dx = p.x - repelFrom.x;
-      const dy = p.y - repelFrom.y;
+      // Repulsion from jar center (where inner electrons cluster)
+      const dx = p.x - j.innerCenter.x;
+      const dy = p.y - j.innerCenter.y;
       const dd = dx*dx + dy*dy;
-      const dist0 = Math.sqrt(dd) + 1;
-      const repel = inductionStrength * 80 / (dist0 * 0.5 + 20);
+      const dist0 = Math.sqrt(dd) + 5;
+      const repel = inductionStrength * 60 / (dist0 + 30);
       p.vx += (dx / dist0) * repel * dt;
       p.vy += (dy / dist0) * repel * dt;
 
-      // If electron is near outer conductor and we're charging, push it into body via left hand
+      // Outer-origin electrons flow into body via left hand when induction is on
       if (p.outerOrigin && inductionStrength > 0.05) {
         const handL = scene.body.handL;
         const dxh = handL.x - p.x;
         const dyh = handL.y - p.y;
-        const dh = Math.hypot(dxh, dyh);
-        if (dh > 1) {
-          p.vx += (dxh / dh) * inductionStrength * 0.5 * dt;
-          p.vy += (dyh / dh) * inductionStrength * 0.5 * dt;
-        }
+        const dh = Math.sqrt(dxh*dxh + dyh*dyh) + 0.5;
+        p.vx += (dxh / dh) * inductionStrength * 0.4 * dt;
+        p.vy += (dyh / dh) * inductionStrength * 0.4 * dt;
         if (dh < 25) {
           p.outerOrigin = false;
-          state.bodyDisplacement++;
+          // Reassign home to a far body node
+          const n = farNodes[(Math.random() * farNodes.length) | 0];
+          p.home = { x: n.x + (Math.random()-0.5)*20, y: n.y + (Math.random()-0.5)*20 };
         }
       }
 
-      // Attraction to nearest body node (keep electrons in body shape)
-      // When induction is high, prefer nodes far from jar
-      let best = p.home, bestScore = -Infinity;
-      for (const n of bodyNodes) {
-        const distToJar = Math.hypot(n.x - j.cx, n.y - j.cy);
-        const distToP = Math.hypot(n.x - p.x, n.y - p.y);
-        const score = inductionStrength * distToJar - distToP;
-        if (score > bestScore) { bestScore = score; best = n; }
-      }
-      const tx = best.x + (p.home.x - best.x) * 0.1;
-      const ty = best.y + (p.home.y - best.y) * 0.1;
-      const ax = (tx - p.x) * 0.008;
-      const ay = (ty - p.y) * 0.008;
-      p.vx += ax * dt;
-      p.vy += ay * dt;
-      p.vx *= 0.88;
-      p.vy *= 0.88;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-
-      // Constrain to body silhouette (simple bbox check)
+      // Pull toward home (always — keeps electrons in body shape)
+      const tx = p.home.x;
+      const ty = p.home.y;
+      p.vx += (tx - p.x) * 0.01 * dt;
+      p.vy += (ty - p.y) * 0.01 * dt;
+      p.vx *= 0.86;
+      p.vy *= 0.86;
+      clampVel(p);
+      p.x = safe(p.x + p.vx * dt, p.home.x);
+      p.y = safe(p.y + p.vy * dt, p.home.y);
       constrainToBody(p);
 
-      // Count "displacement" — electrons far from jar
-      const distFromJar = Math.hypot(p.x - j.cx, p.y - j.cy);
-      if (distFromJar > 200 * scene.body.scale) state.bodyDisplacement++;
+      // Count displacement
+      const dxj = p.x - j.cx, dyj = p.y - j.cy;
+      if (dxj*dxj + dyj*dyj > (180 * scene.body.scale) ** 2) displacementCount++;
+    }
+    state.bodyDisplacement = displacementCount;
+
+    // === Voltage ===
+    state.voltage = Math.round(innerCharge * 100 + Math.pow(inductionStrength, 2) * 5000);
+
+    // === Discharge check (with cooldown to prevent re-trigger spam) ===
+    if (!state.discharging && innerCharge > 30) {
+      const sinceLast = now - (state.lastDischargeEnd || 0);
+      if (sinceLast > config.dischargeCooldown) {
+        const knobD = dist(scene.rightHand.x, scene.rightHand.y, j.knob.x, j.knob.y);
+        if (knobD < config.dischargeThreshold) {
+          triggerDischarge();
+        }
+      }
     }
 
-    // === Voltage calculation ===
-    state.voltage = Math.round(innerCharge * 100 + Math.pow(innerCharge / config.maxInner, 2) * 5000);
-
-    // === Discharge check ===
-    const rhx = scene.rightHand.x, rhy = scene.rightHand.y;
-    const knobD = dist(rhx, rhy, j.knob.x, j.knob.y);
-    if (!state.discharging && knobD < config.dischargeThreshold && innerCharge > 30) {
-      triggerDischarge();
-    }
-
-    // === Arc particles travel ===
+    // === Arc particles ===
     for (let i = particles.arc.length - 1; i >= 0; i--) {
       const p = particles.arc[i];
       p.progress += 0.08 * dt;
@@ -529,9 +544,7 @@
         particles.arc.splice(i, 1);
         continue;
       }
-      // Skip particles still waiting to enter (negative progress = staggered start)
       if (p.progress < 0) continue;
-      // Path: knob -> rightHand -> heart -> handL -> outer
       const path = p.path;
       const lastIdx = path.length - 1;
       let seg = Math.floor(p.progress * lastIdx);
@@ -547,7 +560,7 @@
 
     // Flash decay
     if (state.flashIntensity > 0) {
-      state.flashIntensity -= 0.03 * dt;
+      state.flashIntensity -= 0.04 * dt;
       if (state.flashIntensity < 0) state.flashIntensity = 0;
     }
 
@@ -559,12 +572,16 @@
       scene.rightHand.y += (hy - scene.rightHand.y) * 0.08 * dt;
     }
 
-    // End discharge state (with 2.5s safety timeout)
+    // End discharge: hard timeout (1.5s) + auto-release pointer to retreat hand
     if (state.discharging) {
-      const elapsed = performance.now() - (state.dischargeStartT || 0);
-      if (particles.arc.length === 0 || elapsed > 2500) {
+      const elapsed = now - (state.dischargeStartT || now);
+      if (particles.arc.length === 0 || elapsed > 1500) {
         state.discharging = false;
+        state.lastDischargeEnd = now;
         particles.arc.length = 0;
+        // Force-release right hand so it returns home automatically
+        scene.rightHand.dragging = false;
+        activeDrag = null;
       }
     }
 
