@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>萊頓瓶人體感應實驗</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --panel: rgba(20, 28, 48, 0.85);
+    --border: #2a3a5c;
+    --accent: #4fc3ff;
+    --warn: #ffb84d;
+    --danger: #ff5577;
+    --text: #e8eef8;
+    --muted: #8aa0c4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: radial-gradient(ellipse at center, #0f1830 0%, #050810 100%);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    cursor: default;
+    touch-action: none;
+  }
+  .panel {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #data-panel {
+    top: 20px;
+    left: 20px;
+    min-width: 240px;
+  }
+  #data-panel h3 {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    font-size: 14px;
+  }
+  .data-row .label { color: var(--muted); }
+  .data-row .value {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .data-row.voltage .value { color: var(--warn); }
+  .bar {
+    height: 6px; border-radius: 3px;
+    background: #1a2540;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--warn), var(--danger));
+    transition: width 0.15s;
+  }
+  #mode-panel {
+    top: 20px;
+    right: 20px;
+  }
+  #mode-panel h3 {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+  .mode-btn {
+    display: block;
+    width: 100%;
+    margin: 4px 0;
+    padding: 8px 12px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .mode-btn:hover { background: rgba(79, 195, 255, 0.1); }
+  .mode-btn.active {
+    background: rgba(79, 195, 255, 0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #controls {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  .ctrl-btn {
+    padding: 10px 18px;
+    background: linear-gradient(180deg, #1f2d4d, #182238);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .ctrl-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .ctrl-btn.slow.active {
+    background: linear-gradient(180deg, #5a4a1a, #3d3210);
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .ctrl-btn.reset { color: var(--danger); border-color: rgba(255,85,119,0.4); }
+  #hint {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    background: rgba(20, 28, 48, 0.9);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    color: var(--accent);
+    font-size: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #hint.show { opacity: 1; }
+  #explainer {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    width: 260px;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+    display: none;
+  }
+  #explainer.show { display: block; }
+  #explainer h4 { color: var(--accent); margin-bottom: 6px; font-size: 14px; }
+  #explainer p { margin-bottom: 10px; }
+  @media (max-width: 900px) {
+    #explainer { width: 200px; font-size: 12px; }
+    #data-panel { min-width: 180px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv"></canvas>
+
+  <div class="panel" id="data-panel">
+    <h3>⚡ 即時數據</h3>
+    <div class="data-row">
+      <span class="label">內層電荷量</span>
+      <span class="value" id="d-inner">0</span>
+    </div>
+    <div class="bar"><div id="b-inner" style="width:0%"></div></div>
+    <div class="data-row" style="margin-top:10px">
+      <span class="label">人體感應流動量</span>
+      <span class="value" id="d-body">0</span>
+    </div>
+    <div class="bar"><div id="b-body" style="width:0%"></div></div>
+    <div class="data-row voltage" style="margin-top:10px">
+      <span class="label">預估電壓</span>
+      <span class="value" id="d-volt">0 V</span>
+    </div>
+  </div>
+
+  <div class="panel" id="mode-panel">
+    <h3>🎓 教學模式</h3>
+    <button class="mode-btn active" data-mode="sandbox">純互動沙盒</button>
+    <button class="mode-btn" data-mode="step">步驟引導</button>
+    <button class="mode-btn" data-mode="full">完整教學</button>
+  </div>
+
+  <div id="explainer" class="panel">
+    <h4 id="exp-title">原理說明</h4>
+    <p id="exp-body">將靜電棒移近瓶頂金屬球，按住滑鼠注入電子。</p>
+  </div>
+
+  <div id="hint"></div>
+
+  <div class="panel" id="controls">
+    <button class="ctrl-btn slow" id="btn-slow">🐢 慢動作</button>
+    <button class="ctrl-btn reset" id="btn-reset">↻ 重置</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============ Canvas Setup ============
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = window.devicePixelRatio || 1;
+
+  function resize() {
+    W = cv.clientWidth;
+    H = cv.clientHeight;
+    cv.width = W * DPR;
+    cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    layout();
+  }
+  window.addEventListener('resize', resize);
+
+  // ============ Scene Layout ============
+  const scene = {
+    body: {},       // human body
+    jar: {},        // leyden jar
+    rod: { x: 0, y: 0, dragging: false, charging: false },
+    rightHand: { x: 0, y: 0, dragging: false, home: { x: 0, y: 0 } },
+  };
+
+  function layout() {
+    // Human body anchored center-left
+    const bx = W * 0.42;
+    const by = H * 0.5;
+    const scale = Math.min(W, H) / 700;
+    scene.body = {
+      cx: bx, cy: by, scale,
+      head: { x: bx, y: by - 220 * scale, r: 32 * scale },
+      neck: { x: bx, y: by - 180 * scale },
+      shoulderL: { x: bx - 70 * scale, y: by - 150 * scale },
+      shoulderR: { x: bx + 70 * scale, y: by - 150 * scale },
+      torsoTop: { x: bx, y: by - 150 * scale },
+      torsoBot: { x: bx, y: by + 50 * scale },
+      heart: { x: bx - 18 * scale, y: by - 80 * scale },
+      hipL: { x: bx - 40 * scale, y: by + 60 * scale },
+      hipR: { x: bx + 40 * scale, y: by + 60 * scale },
+      footL: { x: bx - 50 * scale, y: by + 240 * scale },
+      footR: { x: bx + 50 * scale, y: by + 240 * scale },
+      // Left arm reaches to jar (jar to the right of body)
+      elbowL: { x: bx + 110 * scale, y: by - 70 * scale },
+      handL: { x: bx + 180 * scale, y: by - 10 * scale },
+      // Right arm — controllable
+      elbowR: { x: bx - 110 * scale, y: by - 70 * scale },
+      // Right hand home position (resting)
+      handRHome: { x: bx - 180 * scale, y: by - 30 * scale },
+    };
+    if (!scene.rightHand.initialized) {
+      scene.rightHand.x = scene.body.handRHome.x;
+      scene.rightHand.y = scene.body.handRHome.y;
+      scene.rightHand.initialized = true;
+    }
+    scene.rightHand.home.x = scene.body.handRHome.x;
+    scene.rightHand.home.y = scene.body.handRHome.y;
+
+    // Leyden jar — to the right of body, held by left hand
+    const jx = bx + 230 * scale;
+    const jy = by + 30 * scale;
+    scene.jar = {
+      cx: jx, cy: jy,
+      width: 90 * scale,
+      height: 200 * scale,
+      // Top metal sphere
+      knob: { x: jx, y: jy - 130 * scale, r: 18 * scale },
+      // Inner conductor center (charge collector)
+      innerCenter: { x: jx, y: jy - 10 * scale },
+      // Outer conductor wraps lower half
+      outerTop: jy - 30 * scale,
+      outerBot: jy + 90 * scale,
+    };
+
+    // Rod initial position
+    if (!scene.rod.initialized) {
+      scene.rod.x = jx + 200 * scale;
+      scene.rod.y = jy - 200 * scale;
+      scene.rod.initialized = true;
+    }
+  }
+
+  // ============ Physics Simulation ============
+  const config = {
+    maxInner: 300,         // max electrons in inner conductor
+    bodyElectronCount: 80, // free electrons in body
+    chargeRate: 2.5,       // electrons injected per frame when charging
+    dischargeThreshold: 35, // distance for right-hand discharge trigger
+    rodInjectDistance: 40, // distance for rod to inject
+  };
+
+  let particles = {
+    inner: [],     // electrons in inner conductor
+    body: [],      // free electrons in body (start in left hand / outer)
+    arc: [],       // electrons traveling through arc
+    discharged: 0, // counter
+  };
+
+  let state = {
+    voltage: 0,
+    bodyDisplacement: 0,
+    discharging: false,
+    flashIntensity: 0,
+    slowMo: false,
+    mode: 'sandbox',
+  };
+
+  // Body skeleton path nodes (electrons can pool around these)
+  function getBodyNodes() {
+    const b = scene.body;
+    return [
+      b.handL, b.elbowL, b.shoulderL, b.heart, b.torsoTop,
+      b.shoulderR, b.elbowR, { x: scene.rightHand.x, y: scene.rightHand.y },
+      b.torsoBot, b.hipL, b.hipR, b.footL, b.footR, b.head,
+    ];
+  }
+
+  function initParticles() {
+    particles.inner = [];
+    particles.body = [];
+    particles.arc = [];
+    particles.discharged = 0;
+    state.voltage = 0;
+    state.bodyDisplacement = 0;
+    state.discharging = false;
+    state.flashIntensity = 0;
+
+    // Populate body with neutral free electrons, mostly near left hand & outer jar wall
+    const nodes = getBodyNodes();
+    for (let i = 0; i < config.bodyElectronCount; i++) {
+      // Spread along skeleton
+      const n = nodes[i % nodes.length];
+      particles.body.push({
+        x: n.x + (Math.random() - 0.5) * 30,
+        y: n.y + (Math.random() - 0.5) * 30,
+        vx: 0, vy: 0,
+        home: { x: n.x, y: n.y },
+      });
+    }
+    // Add electrons clustered near outer conductor of jar (held by left hand)
+    const j = scene.jar;
+    for (let i = 0; i < 30; i++) {
+      const t = Math.random();
+      particles.body.push({
+        x: j.cx + (Math.random() - 0.5) * j.width * 0.9,
+        y: j.outerTop + t * (j.outerBot - j.outerTop),
+        vx: 0, vy: 0,
+        home: { x: scene.body.handL.x + (Math.random() - 0.5) * 20,
+                y: scene.body.handL.y + (Math.random() - 0.5) * 20 },
+        outerOrigin: true,
+      });
+    }
+  }
+
+  function addInnerElectron() {
+    const j = scene.jar;
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * j.width * 0.35;
+    particles.inner.push({
+      x: j.innerCenter.x + Math.cos(angle) * r,
+      y: j.innerCenter.y + Math.sin(angle) * r - 20 + Math.random() * 60,
+      vx: 0, vy: 0,
+      life: 1,
+    });
+  }
+
+  // ============ Update Loop ============
+  let lastT = 0;
+  function tick(t) {
+    const dt = Math.min(50, t - lastT) / 16.67;
+    lastT = t;
+    const dts = state.slowMo ? dt * 0.25 : dt;
+    update(dts);
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  function update(dt) {
+    // === Rod charging ===
+    if (scene.rod.charging) {
+      const d = dist(scene.rod.x, scene.rod.y, scene.jar.knob.x, scene.jar.knob.y);
+      if (d < 80 && particles.inner.length < config.maxInner) {
+        for (let i = 0; i < config.chargeRate; i++) {
+          if (particles.inner.length < config.maxInner) addInnerElectron();
+        }
+      }
+    }
+
+    // === Inner electrons settle in inner conductor ===
+    const j = scene.jar;
+    for (const p of particles.inner) {
+      // Confine to inner region (avoid going past glass)
+      const dx = p.x - j.innerCenter.x;
+      const dy = p.y - j.innerCenter.y;
+      // Mutual repulsion (light)
+      for (const q of particles.inner) {
+        if (q === p) continue;
+        const ddx = p.x - q.x, ddy = p.y - q.y;
+        const dd = ddx*ddx + ddy*ddy;
+        if (dd < 100 && dd > 0.1) {
+          const f = 0.3 / dd;
+          p.vx += ddx * f;
+          p.vy += ddy * f;
+        }
+      }
+      p.vx *= 0.85;
+      p.vy *= 0.85;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      // Constrain inside inner conductor (ellipse)
+      const a = j.width * 0.35, b = j.height * 0.35;
+      const nx = (p.x - j.innerCenter.x) / a;
+      const ny = (p.y - j.innerCenter.y) / b;
+      const r2 = nx*nx + ny*ny;
+      if (r2 > 1) {
+        const r = Math.sqrt(r2);
+        p.x = j.innerCenter.x + (nx / r) * a;
+        p.y = j.innerCenter.y + (ny / r) * b;
+      }
+    }
+
+    // === Induction: inner charge pushes body electrons toward extremities ===
+    const innerCharge = particles.inner.length;
+    const inductionStrength = innerCharge / config.maxInner; // 0..1
+    state.bodyDisplacement = 0;
+    const bodyNodes = getBodyNodes();
+    const repelFrom = j.innerCenter;
+
+    for (const p of particles.body) {
+      // Repulsion away from inner electrons cluster
+      const dx = p.x - repelFrom.x;
+      const dy = p.y - repelFrom.y;
+      const dd = dx*dx + dy*dy;
+      const dist0 = Math.sqrt(dd) + 1;
+      const repel = inductionStrength * 80 / (dist0 * 0.5 + 20);
+      p.vx += (dx / dist0) * repel * dt;
+      p.vy += (dy / dist0) * repel * dt;
+
+      // If electron is near outer conductor and we're charging, push it into body via left hand
+      if (p.outerOrigin && inductionStrength > 0.05) {
+        const handL = scene.body.handL;
+        const dxh = handL.x - p.x;
+        const dyh = handL.y - p.y;
+        const dh = Math.hypot(dxh, dyh);
+        if (dh > 1) {
+          p.vx += (dxh / dh) * inductionStrength * 0.5 * dt;
+          p.vy += (dyh / dh) * inductionStrength * 0.5 * dt;
+        }
+        if (dh < 25) {
+          p.outerOrigin = false;
+          state.bodyDisplacement++;
+        }
+      }
+
+      // Attraction to nearest body node (keep electrons in body shape)
+      // When induction is high, prefer nodes far from jar
+      let best = p.home, bestScore = -Infinity;
+      for (const n of bodyNodes) {
+        const distToJar = Math.hypot(n.x - j.cx, n.y - j.cy);
+        const distToP = Math.hypot(n.x - p.x, n.y - p.y);
+        const score = inductionStrength * distToJar - distToP;
+        if (score > bestScore) { bestScore = score; best = n; }
+      }
+      const tx = best.x + (p.home.x - best.x) * 0.1;
+      const ty = best.y + (p.home.y - best.y) * 0.1;
+      const ax = (tx - p.x) * 0.008;
+      const ay = (ty - p.y) * 0.008;
+      p.vx += ax * dt;
+      p.vy += ay * dt;
+      p.vx *= 0.88;
+      p.vy *= 0.88;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      // Constrain to body silhouette (simple bbox check)
+      constrainToBody(p);
+
+      // Count "displacement" — electrons far from jar
+      const distFromJar = Math.hypot(p.x - j.cx, p.y - j.cy);
+      if (distFromJar > 200 * scene.body.scale) state.bodyDisplacement++;
+    }
+
+    // === Voltage calculation ===
+    state.voltage = Math.round(innerCharge * 100 + Math.pow(innerCharge / config.maxInner, 2) * 5000);
+
+    // === Discharge check ===
+    const rhx = scene.rightHand.x, rhy = scene.rightHand.y;
+    const knobD = dist(rhx, rhy, j.knob.x, j.knob.y);
+    if (!state.discharging && knobD < config.dischargeThreshold && innerCharge > 30) {
+      triggerDischarge();
+    }
+
+    // === Arc particles travel ===
+    for (let i = particles.arc.length - 1; i >= 0; i--) {
+      const p = particles.arc[i];
+      p.progress += 0.04 * dt;
+      if (p.progress >= 1) {
+        particles.arc.splice(i, 1);
+        continue;
+      }
+      // Path: knob -> rightHand -> heart -> handL -> outer
+      const path = p.path;
+      const seg = Math.floor(p.progress * (path.length - 1));
+      const local = p.progress * (path.length - 1) - seg;
+      const a = path[seg], b = path[Math.min(seg + 1, path.length - 1)];
+      // Add jitter for arc effect
+      const jitter = seg === 0 ? 8 : 2;
+      p.x = a.x + (b.x - a.x) * local + (Math.random() - 0.5) * jitter;
+      p.y = a.y + (b.y - a.y) * local + (Math.random() - 0.5) * jitter;
+    }
+
+    // Flash decay
+    if (state.flashIntensity > 0) {
+      state.flashIntensity -= 0.03 * dt;
+      if (state.flashIntensity < 0) state.flashIntensity = 0;
+    }
+
+    // Right hand auto-return when not dragging
+    if (!scene.rightHand.dragging) {
+      const hx = scene.rightHand.home.x;
+      const hy = scene.rightHand.home.y;
+      scene.rightHand.x += (hx - scene.rightHand.x) * 0.08 * dt;
+      scene.rightHand.y += (hy - scene.rightHand.y) * 0.08 * dt;
+    }
+
+    // End discharge state
+    if (state.discharging && particles.arc.length === 0) {
+      state.discharging = false;
+    }
+
+    updateUI();
+    updateHints();
+  }
+
+  function constrainToBody(p) {
+    // Loose constraint — keep particles within rough body bbox
+    const b = scene.body;
+    const minX = b.cx - 200 * b.scale;
+    const maxX = scene.jar.cx + scene.jar.width * 0.6;
+    const minY = b.head.y - 40 * b.scale;
+    const maxY = b.footL.y + 20 * b.scale;
+    if (p.x < minX) { p.x = minX; p.vx *= -0.3; }
+    if (p.x > maxX) { p.x = maxX; p.vx *= -0.3; }
+    if (p.y < minY) { p.y = minY; p.vy *= -0.3; }
+    if (p.y > maxY) { p.y = maxY; p.vy *= -0.3; }
+  }
+
+  function triggerDischarge() {
+    if (particles.inner.length === 0) return;
+    state.discharging = true;
+    state.flashIntensity = 1;
+    const j = scene.jar;
+    const b = scene.body;
+    const path = [
+      { x: j.knob.x, y: j.knob.y },
+      { x: scene.rightHand.x, y: scene.rightHand.y },
+      { x: b.elbowR.x, y: b.elbowR.y },
+      { x: b.shoulderR.x, y: b.shoulderR.y },
+      { x: b.heart.x, y: b.heart.y },
+      { x: b.shoulderL.x, y: b.shoulderL.y },
+      { x: b.elbowL.x, y: b.elbowL.y },
+      { x: b.handL.x, y: b.handL.y },
+      { x: j.cx, y: j.outerTop + (j.outerBot - j.outerTop) * 0.5 },
+    ];
+    const count = particles.inner.length;
+    for (let i = 0; i < count; i++) {
+      particles.arc.push({
+        progress: -i * 0.02,
+        path,
+        x: j.knob.x, y: j.knob.y,
+      });
+    }
+    particles.discharged += count;
+    particles.inner = [];
+    // Reset outer electrons to flow back
+    for (const p of particles.body) {
+      if (!p.outerOrigin) {
+        // 30% return to outer
+        if (Math.random() < 0.3) {
+          p.outerOrigin = true;
+          p.home = {
+            x: j.cx + (Math.random() - 0.5) * j.width * 0.9,
+            y: j.outerTop + Math.random() * (j.outerBot - j.outerTop),
+          };
+        }
+      }
+    }
+  }
+
+  // ============ Rendering ============
+  function render() {
+    // Background flash
+    if (state.flashIntensity > 0) {
+      ctx.fillStyle = `rgba(${100 + state.flashIntensity * 155}, ${150 + state.flashIntensity * 105}, 255, ${state.flashIntensity * 0.3})`;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.clearRect(0, 0, W, H);
+    }
+
+    drawBody();
+    drawJar();
+    drawRod();
+    drawRightHand();
+    drawParticles();
+    drawArc();
+  }
+
+  function drawBody() {
+    const b = scene.body;
+    const s = b.scale;
+    ctx.save();
+    // Body fill (translucent)
+    ctx.fillStyle = 'rgba(80, 110, 160, 0.15)';
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(b.head.x, b.head.y, b.head.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Torso (rounded shape)
+    ctx.beginPath();
+    ctx.moveTo(b.shoulderL.x, b.shoulderL.y);
+    ctx.lineTo(b.shoulderR.x, b.shoulderR.y);
+    ctx.lineTo(b.hipR.x, b.hipR.y);
+    ctx.lineTo(b.hipL.x, b.hipL.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Neck
+    ctx.beginPath();
+    ctx.moveTo(b.head.x - 10*s, b.head.y + b.head.r - 4);
+    ctx.lineTo(b.head.x + 10*s, b.head.y + b.head.r - 4);
+    ctx.lineTo(b.shoulderR.x - 20*s, b.shoulderR.y);
+    ctx.lineTo(b.shoulderL.x + 20*s, b.shoulderL.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Left arm to jar
+    ctx.lineWidth = 16 * s;
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.5)';
+    ctx.beginPath();
+    ctx.moveTo(b.shoulderR.x, b.shoulderR.y);
+    ctx.lineTo(b.elbowL.x, b.elbowL.y);
+    ctx.lineTo(b.handL.x, b.handL.y);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.8)';
+
+    // Right arm to right hand
+    ctx.lineWidth = 16 * s;
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.5)';
+    ctx.beginPath();
+    ctx.moveTo(b.shoulderL.x, b.shoulderL.y);
+    ctx.lineTo(b.elbowR.x, b.elbowR.y);
+    ctx.lineTo(scene.rightHand.x, scene.rightHand.y);
+    ctx.stroke();
+
+    // Legs
+    ctx.beginPath();
+    ctx.moveTo(b.hipL.x, b.hipL.y);
+    ctx.lineTo(b.footL.x, b.footL.y);
+    ctx.moveTo(b.hipR.x, b.hipR.y);
+    ctx.lineTo(b.footR.x, b.footR.y);
+    ctx.stroke();
+
+    // Hands
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(140, 180, 230, 0.9)';
+    ctx.fillStyle = 'rgba(80, 110, 160, 0.3)';
+    ctx.beginPath();
+    ctx.arc(b.handL.x, b.handL.y, 14 * s, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Heart marker (faint)
+    ctx.fillStyle = 'rgba(255, 100, 120, 0.15)';
+    ctx.beginPath();
+    ctx.arc(b.heart.x, b.heart.y, 12 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawJar() {
+    const j = scene.jar;
+    const innerCharge = particles.inner.length;
+    const outerLost = Math.min(1, state.bodyDisplacement / 80);
+
+    ctx.save();
+
+    // Outer conductor (foil) — turns yellow/orange as it loses electrons (becomes +)
+    const outerColor = outerLost > 0.1
+      ? `rgba(255, ${200 - outerLost * 100}, ${50}, ${0.5 + outerLost * 0.4})`
+      : 'rgba(180, 180, 200, 0.4)';
+    ctx.fillStyle = outerColor;
+    ctx.strokeStyle = outerColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(j.cx - j.width/2 - 4, j.outerTop, j.width + 8, j.outerBot - j.outerTop);
+    ctx.fill();
+
+    // Glass body
+    const grad = ctx.createLinearGradient(j.cx - j.width/2, 0, j.cx + j.width/2, 0);
+    grad.addColorStop(0, 'rgba(180, 220, 255, 0.15)');
+    grad.addColorStop(0.5, 'rgba(180, 220, 255, 0.05)');
+    grad.addColorStop(1, 'rgba(180, 220, 255, 0.15)');
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = 'rgba(180, 220, 255, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Bottle shape
+    const topY = j.cy - j.height/2;
+    const botY = j.cy + j.height/2;
+    ctx.moveTo(j.cx - 18, topY);
+    ctx.lineTo(j.cx - 18, topY + 20);
+    ctx.lineTo(j.cx - j.width/2, topY + 40);
+    ctx.lineTo(j.cx - j.width/2, botY - 10);
+    ctx.quadraticCurveTo(j.cx - j.width/2, botY, j.cx, botY);
+    ctx.quadraticCurveTo(j.cx + j.width/2, botY, j.cx + j.width/2, botY - 10);
+    ctx.lineTo(j.cx + j.width/2, topY + 40);
+    ctx.lineTo(j.cx + 18, topY + 20);
+    ctx.lineTo(j.cx + 18, topY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner conductor (aluminium foil) - glow when charged
+    const innerIntensity = innerCharge / config.maxInner;
+    ctx.fillStyle = `rgba(120, 180, 255, ${0.2 + innerIntensity * 0.4})`;
+    ctx.strokeStyle = `rgba(180, 220, 255, ${0.6 + innerIntensity * 0.4})`;
+    ctx.beginPath();
+    ctx.ellipse(j.innerCenter.x, j.innerCenter.y, j.width * 0.35, j.height * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Connecting wire from knob to inner
+    ctx.strokeStyle = 'rgba(200, 200, 220, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(j.knob.x, j.knob.y + 4);
+    ctx.lineTo(j.innerCenter.x, j.innerCenter.y - j.height * 0.3);
+    ctx.stroke();
+
+    // Top metal knob
+    const knobGrad = ctx.createRadialGradient(j.knob.x - 5, j.knob.y - 5, 2, j.knob.x, j.knob.y, j.knob.r);
+    knobGrad.addColorStop(0, '#f0f4ff');
+    knobGrad.addColorStop(1, '#5a6a90');
+    ctx.fillStyle = knobGrad;
+    ctx.beginPath();
+    ctx.arc(j.knob.x, j.knob.y, j.knob.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#aab8d4';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Polarity indicators
+    if (innerCharge > 20) {
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.9)';
+      ctx.font = `bold ${14 * scene.body.scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('−', j.innerCenter.x, j.innerCenter.y - j.height * 0.4);
+    }
+    if (outerLost > 0.15) {
+      ctx.fillStyle = 'rgba(255, 200, 80, 0.9)';
+      ctx.font = `bold ${14 * scene.body.scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('+', j.cx, j.outerBot + 12);
+    }
+
+    ctx.restore();
+  }
+
+  function drawRod() {
+    const r = scene.rod;
+    ctx.save();
+    // Rod body (yellow, charged with negative)
+    const angle = Math.atan2(scene.jar.knob.y - r.y, scene.jar.knob.x - r.x);
+    const len = 70 * scene.body.scale;
+    const handX = r.x - Math.cos(angle) * len;
+    const handY = r.y - Math.sin(angle) * len;
+
+    // Handle
+    ctx.strokeStyle = '#3a2810';
+    ctx.lineWidth = 10 * scene.body.scale;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(handX, handY);
+    ctx.lineTo(handX - Math.cos(angle) * 40, handY - Math.sin(angle) * 40);
+    ctx.stroke();
+
+    // Yellow rod (charged)
+    const rodGrad = ctx.createLinearGradient(handX, handY, r.x, r.y);
+    rodGrad.addColorStop(0, '#ffd64a');
+    rodGrad.addColorStop(1, '#fff094');
+    ctx.strokeStyle = rodGrad;
+    ctx.lineWidth = 12 * scene.body.scale;
+    ctx.beginPath();
+    ctx.moveTo(handX, handY);
+    ctx.lineTo(r.x, r.y);
+    ctx.stroke();
+
+    // Tip glow
+    if (r.charging) {
+      ctx.fillStyle = 'rgba(255, 220, 100, 0.4)';
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 18 * scene.body.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // negative sign on rod
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `bold ${12 * scene.body.scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('−', (handX + r.x) / 2, (handY + r.y) / 2);
+
+    // Drag hint
+    if (!r.dragging && !r.charging) {
+      ctx.strokeStyle = 'rgba(255, 220, 100, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 22 * scene.body.scale, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  function drawRightHand() {
+    const h = scene.rightHand;
+    const s = scene.body.scale;
+    ctx.save();
+    ctx.fillStyle = 'rgba(200, 230, 255, 0.4)';
+    ctx.strokeStyle = h.dragging ? '#4fc3ff' : 'rgba(140, 180, 230, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, 14 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Drag hint ring
+    if (!h.dragging) {
+      ctx.strokeStyle = 'rgba(79, 195, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 22 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    // Inner electrons - bright blue
+    ctx.fillStyle = '#5cb8ff';
+    for (const p of particles.inner) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Glow effect for inner cluster
+    if (particles.inner.length > 50) {
+      ctx.fillStyle = `rgba(92, 184, 255, 0.15)`;
+      ctx.beginPath();
+      ctx.arc(scene.jar.innerCenter.x, scene.jar.innerCenter.y, 30, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Body electrons - softer blue
+    for (const p of particles.body) {
+      ctx.fillStyle = p.outerOrigin ? 'rgba(120, 200, 255, 0.85)' : 'rgba(100, 170, 240, 0.75)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawArc() {
+    if (particles.arc.length === 0) return;
+    ctx.save();
+    // Main lightning path
+    const path = particles.arc[0].path;
+    if (path) {
+      ctx.strokeStyle = '#aaddff';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#88ccff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        const px = path[i].x + (Math.random() - 0.5) * 6;
+        const py = path[i].y + (Math.random() - 0.5) * 6;
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      // Bright core
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
+      }
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    // Traveling electrons
+    ctx.fillStyle = '#ffffff';
+    for (const p of particles.arc) {
+      if (p.progress < 0 || p.progress > 1) continue;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ============ UI Updates ============
+  const ui = {
+    inner: document.getElementById('d-inner'),
+    body: document.getElementById('d-body'),
+    volt: document.getElementById('d-volt'),
+    bInner: document.getElementById('b-inner'),
+    bBody: document.getElementById('b-body'),
+    hint: document.getElementById('hint'),
+    explainer: document.getElementById('explainer'),
+    expTitle: document.getElementById('exp-title'),
+    expBody: document.getElementById('exp-body'),
+  };
+
+  function updateUI() {
+    ui.inner.textContent = particles.inner.length;
+    ui.body.textContent = state.bodyDisplacement;
+    ui.volt.textContent = state.voltage.toLocaleString() + ' V';
+    ui.bInner.style.width = (particles.inner.length / config.maxInner * 100) + '%';
+    ui.bBody.style.width = Math.min(100, state.bodyDisplacement / 80 * 100) + '%';
+  }
+
+  // ============ Hints & Modes ============
+  let currentHint = '';
+  function showHint(text) {
+    if (text === currentHint) return;
+    currentHint = text;
+    if (text) {
+      ui.hint.textContent = text;
+      ui.hint.classList.add('show');
+    } else {
+      ui.hint.classList.remove('show');
+    }
+  }
+
+  function updateHints() {
+    if (state.mode === 'sandbox') {
+      showHint('');
+      ui.explainer.classList.remove('show');
+      return;
+    }
+
+    let hint = '';
+    let title = '', body = '';
+
+    if (particles.inner.length === 0) {
+      hint = '步驟 1：拖曳黃色靜電棒靠近瓶頂金屬球，按住滑鼠注入電子';
+      title = '⚡ 起步：靜電棒充電';
+      body = '黃色靜電棒帶負電。靠近瓶頂金屬球並按住滑鼠時，電子會被注入內層導體（鋁箔）。';
+    } else if (particles.inner.length < config.maxInner * 0.4) {
+      hint = '步驟 2：繼續充電，觀察人體電子被「推開」';
+      title = '🔬 靜電感應發生中';
+      body = '內層電子越多，斥力越大。原本在左手與外層的自由電子被推向手臂、軀幹、雙腿。外層失去電子後帶正電（黃色）。';
+    } else if (particles.inner.length < config.maxInner * 0.9) {
+      hint = '步驟 3：充滿電後，把右手拖向瓶頂金屬球';
+      title = '⚠️ 高壓警戒';
+      body = '電壓已達數千伏特。當右手靠近瓶頂時，空氣絕緣會被擊穿，形成電弧。';
+    } else {
+      hint = '步驟 4：右手靠近瓶頂觸發放電！';
+      title = '💥 準備放電';
+      body = '電子將從內層 → 電弧 → 右手 → 軀幹/心臟 → 左手 → 中和外層的正電。這就是電擊的路徑。';
+    }
+
+    if (state.discharging) {
+      hint = '⚡ 放電中：電子正穿過你的身體！';
+      title = '⚡ 閉合迴路放電';
+      body = '電子高速流經人體完成迴路。真實情境中，這正是觸電的瞬間。';
+    }
+
+    showHint(hint);
+    if (state.mode === 'full') {
+      ui.expTitle.textContent = title;
+      ui.expBody.textContent = body;
+      ui.explainer.classList.add('show');
+    } else {
+      ui.explainer.classList.remove('show');
+    }
+  }
+
+  // ============ Input ============
+  function getMousePos(e) {
+    const rect = cv.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  let activeDrag = null;
+
+  cv.addEventListener('pointerdown', (e) => {
+    const p = getMousePos(e);
+    const rodD = dist(p.x, p.y, scene.rod.x, scene.rod.y);
+    const handD = dist(p.x, p.y, scene.rightHand.x, scene.rightHand.y);
+    if (rodD < 30 * scene.body.scale) {
+      activeDrag = 'rod';
+      scene.rod.dragging = true;
+      scene.rod.charging = true;
+      cv.setPointerCapture(e.pointerId);
+    } else if (handD < 30 * scene.body.scale) {
+      activeDrag = 'hand';
+      scene.rightHand.dragging = true;
+      cv.setPointerCapture(e.pointerId);
+    } else {
+      // Click anywhere else with rod nearby - just start charging if rod is near knob
+      const rodKnobD = dist(scene.rod.x, scene.rod.y, scene.jar.knob.x, scene.jar.knob.y);
+      if (rodKnobD < 80) {
+        scene.rod.charging = true;
+      }
+    }
+  });
+
+  cv.addEventListener('pointermove', (e) => {
+    if (!activeDrag) return;
+    const p = getMousePos(e);
+    if (activeDrag === 'rod') {
+      scene.rod.x = p.x;
+      scene.rod.y = p.y;
+    } else if (activeDrag === 'hand') {
+      scene.rightHand.x = p.x;
+      scene.rightHand.y = p.y;
+    }
+  });
+
+  function endDrag(e) {
+    activeDrag = null;
+    scene.rod.dragging = false;
+    scene.rod.charging = false;
+    scene.rightHand.dragging = false;
+  }
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+  cv.addEventListener('pointerleave', endDrag);
+
+  // ============ Controls ============
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    initParticles();
+  });
+
+  const slowBtn = document.getElementById('btn-slow');
+  slowBtn.addEventListener('click', () => {
+    state.slowMo = !state.slowMo;
+    slowBtn.classList.toggle('active', state.slowMo);
+    slowBtn.textContent = state.slowMo ? '🐢 慢動作 (開)' : '🐢 慢動作';
+  });
+
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mode = btn.dataset.mode;
+    });
+  });
+
+  // ============ Utils ============
+  function dist(x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // ============ Boot ============
+  resize();
+  initParticles();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
