@@ -394,8 +394,15 @@
     const dt = Math.min(50, t - lastT) / 16.67;
     lastT = t;
     const dts = state.slowMo ? dt * 0.25 : dt;
-    update(dts);
-    render();
+    try {
+      update(dts);
+      render();
+    } catch (err) {
+      console.error('Tick error (recovered):', err);
+      // Recover: clear arc particles which are the most fragile state
+      particles.arc.length = 0;
+      state.discharging = false;
+    }
     requestAnimationFrame(tick);
   }
 
@@ -522,12 +529,17 @@
         particles.arc.splice(i, 1);
         continue;
       }
+      // Skip particles still waiting to enter (negative progress = staggered start)
+      if (p.progress < 0) continue;
       // Path: knob -> rightHand -> heart -> handL -> outer
       const path = p.path;
-      const seg = Math.floor(p.progress * (path.length - 1));
-      const local = p.progress * (path.length - 1) - seg;
-      const a = path[seg], b = path[Math.min(seg + 1, path.length - 1)];
-      // Add jitter for arc effect
+      const lastIdx = path.length - 1;
+      let seg = Math.floor(p.progress * lastIdx);
+      if (seg < 0) seg = 0;
+      if (seg > lastIdx - 1) seg = lastIdx - 1;
+      const local = p.progress * lastIdx - seg;
+      const a = path[seg], b = path[seg + 1];
+      if (!a || !b) continue;
       const jitter = seg === 0 ? 8 : 2;
       p.x = a.x + (b.x - a.x) * local + (Math.random() - 0.5) * jitter;
       p.y = a.y + (b.y - a.y) * local + (Math.random() - 0.5) * jitter;
